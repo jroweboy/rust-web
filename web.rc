@@ -1,0 +1,5 @@
+#[link(name = "web", vers = "0.1", author = "Dan Skorupski")];
+#[crate_type = "lib"];
+
+pub mod fcgi;
+pub mod app;

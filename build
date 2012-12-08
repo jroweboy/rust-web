@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e -x
+rm -rf example libweb*
+rustc -g -L ~/homebrew/lib web.rc
+rustc -g -L . example.rs

@@ -1,0 +1,2 @@
+#!/bin/sh
+exec spawn-fcgi -n -s example.socket /Users/at0m13/Documents/rust-fcgi/example
