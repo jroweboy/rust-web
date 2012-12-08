@@ -1,2 +1,2 @@
 #!/bin/sh
-exec nginx -c ~/Documents/rust-fcgi/nginx.conf
+exec nginx -c /home/at0m13/projects/rust-web/nginx.conf

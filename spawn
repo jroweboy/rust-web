@@ -1,2 +1,3 @@
 #!/bin/sh
-exec spawn-fcgi -n -s example.socket /Users/at0m13/Documents/rust-fcgi/example
+export ROOT_DIR=/home/at0m13/projects/rust-web
+exec spawn-fcgi -n -s $ROOT_DIR/example.socket $ROOT_DIR/example
