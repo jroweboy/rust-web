@@ -1,50 +1,39 @@
-use libc::*;
-use io::WriterUtil;
-
-enum Stream {}
+use std::io;
+use std::io::Writer;
+use std::libc::types::common::c95::c_void;
+use std::vec;
+use std::ptr;
+use fcgirequest::FCGIRequest;
 
 // for whatever reason I can't call to_const_ptr in libcore (but I can call to_ptr)
-#[inline(always)]
-pub unsafe fn to_const_ptr<T>(v: &[const T]) -> *const T {
-    let repr: **vec::raw::SliceRepr = ::cast::transmute(&v);
-    return ::cast::reinterpret_cast(&ptr::addr_of(&((**repr).data)));
-}
-
-pub struct Request {
-    request_id: c_int,
-    role: c_int,
-    in_stream: *Stream,
-    out_stream: *Stream,
-    err_stream: *Stream,
-    envp: **c_char,
-    params_ptr: *c_void,
-    ipc_fd: c_int,
-    is_begin_processed: c_int,
-    keep_connection: c_int,
-    app_status: c_int,
-    nwriters: c_int,
-    flags: c_int,
-    listen_sock: c_int
-}
+//#[inline(always)]
+//pub unsafe fn to_const_ptr<T>(v: &[T]) -> *T {
+//    let repr: **vec::raw::SliceRepr = ::cast::transmute(&v);
+//    return ::cast::reinterpret_cast(&ptr::addr_of(&((**repr).data)));
+//}
 
 #[link_name="fcgi"]
-extern mod lib {
-fn FCGX_Init() -> c_int;
-fn FCGX_InitRequest(req: *Request, sock: c_int, flags: c_int) -> c_int;
-fn FCGX_Accept_r(req: *Request) -> c_int;
-fn FCGX_GetParam(name: *c_char, envp: **c_char) -> *c_char;
-fn FCGX_GetStr(s: *c_char, n: c_int, stream: *Stream) -> c_int;
-fn FCGX_GetLine(s: *c_char, n: c_int, stream: *Stream) -> *c_char;
-fn FCGX_PutStr(s: *c_char, n: c_int, stream: *Stream) -> c_int;
+mod lib {
+    use fcgirequest::FCGIRequest;
+    //use std::io::Stream;
+    enum Stream {}
+    extern {
+        fn FCGX_Init() -> i32;
+        fn FCGX_InitRequest(req: *FCGIRequest, sock: i32, flags: i32) -> i32;
+        fn FCGX_Accept_r(req: *FCGIRequest) -> i32;
+        fn FCGX_GetParam(name: *i8, envp: **i8) -> *i8;
+        fn FCGX_GetStr(s: *i8, n: i32, stream: *Stream) -> i32;
+        fn FCGX_GetLine(s: *i8, n: i32, stream: *Stream) -> *i8;
+        fn FCGX_PutStr(s: *i8, n: i32, stream: *Stream) -> i32;
+    }
 }
 
-use lib::*;
 
-pub fn each_request(f : fn(&Request) -> bool) -> bool {
+pub fn each_request(f : fn(&FCGIRequest) -> bool) -> bool {
     // there's no way to tell rust to default initialize
     // nor a way to say FCGX_Accept_r initializes req,
     // so this avoids a compiler error
-    let req = Request {
+    let req = FCGIRequest {
         request_id: 0,
         role: 0,
         in_stream: ptr::null(),
@@ -60,15 +49,15 @@ pub fn each_request(f : fn(&Request) -> bool) -> bool {
         flags: 0,
         listen_sock: 0
     };
-    if FCGX_Init() != 0 {
+    if lib::FCGX_Init() != 0 {
         io::stderr().write_line("FCGX_Init failed");
         return false
     }
-    if FCGX_InitRequest(ptr::addr_of(&req), 0, 0) != 0 {
+    if lib::FCGX_InitRequest(req.addr_of(), 0, 0) != 0 {
         io::stderr().write_line("FCGX_InitRequest failed");
         return false
     }
-    while FCGX_Accept_r(ptr::addr_of(&req)) == 0 {
+    while lib::FCGX_Accept_r(req.addr_of()) == 0 {
         if !f(&req) {
             break;
         }
@@ -76,55 +65,12 @@ pub fn each_request(f : fn(&Request) -> bool) -> bool {
     true
 }
 
-impl Request {
-    fn get_param(name: &str) -> ~str {
-        let res = do str::as_c_str(name) |cname| {
-            FCGX_GetParam(cname, self.envp)
-        } as *u8;
-        if ptr::is_null(res) {
-            return ~"";
-        }
-        unsafe {
-            str::raw::from_buf(res)
-        }
-    }
-    fn get_string(maxlen: uint) -> ~str {
-        do make_string(maxlen) |buf| {
-            FCGX_GetStr(buf as *c_char, maxlen as c_int, self.in_stream) as uint
-        }
-    }
-    fn get_line(maxlen: uint) -> ~str {
-        do make_string(maxlen) |buf| {
-            FCGX_GetLine(buf as *c_char, maxlen as c_int, self.in_stream);
-            unsafe {
-                do vec::raw::buf_as_slice(buf, maxlen) |v| {
-                    vec::position_elem(v, ~0).get()
-                }
-            }
-        }
-    }
-    fn put_string(s: &str) {
-        do str::as_buf(s) |buf, len| {
-            FCGX_PutStr(buf as *c_char, (len - 1) as c_int, self.out_stream);
-        }
-    }
-    fn put_err_string(s: &str) {
-        do str::as_buf(s) |buf, len| {
-            FCGX_PutStr(buf as *c_char, (len - 1) as c_int, self.err_stream);
-        }
-    }
-    fn put_buf(buf: &[const u8]) {
-        unsafe {
-            let ptr = to_const_ptr(buf);
-            FCGX_PutStr(ptr as *c_char, vec::len(buf) as c_int, self.out_stream);
-        }
-    }
-}
-
+/*
+// DISABLED until I figure out what this is good for :p
 fn make_string(maxlen: uint, f : fn(*u8) -> uint) -> ~str {
-    let mut result = str::with_capacity(maxlen);
+    let mut result = vec::with_capacity(maxlen);
     let mut length = 0u;
-    do str::as_buf(result) |buf, _| {
+    do result.as_buf() |buf, _| {
         length = f(buf);
     }
     unsafe {
@@ -132,4 +78,4 @@ fn make_string(maxlen: uint, f : fn(*u8) -> uint) -> ~str {
     }
     move(result)
 }
-
+*/

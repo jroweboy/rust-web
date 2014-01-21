@@ -1,7 +1,7 @@
 use method::Method;
 
-pub struct Request {
-    method: Method,
-    uri: ~str
+struct Request {
+   	method: Method,
+   	uri: ~str
 }
 

@@ -1,5 +1,6 @@
-use from_str::FromStr;
+use std::from_str::FromStr;
 
+mod method {
 #[deriving_eq]
 pub enum Method {
     OPTIONS,
@@ -10,9 +11,10 @@ pub enum Method {
     DELETE,
     TRACE
 }
+}
 
 impl Method : FromStr {
-    static pure fn from_str(s: &str) -> Option<Method> {
+    fn from_str(s: &str) -> Option<Method> {
         if s == "OPTIONS" { Some(OPTIONS) }
         else if s == "GET" { Some(GET) }
         else if s == "HEAD" { Some(HEAD) }

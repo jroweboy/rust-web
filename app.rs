@@ -1,10 +1,7 @@
-use std::*;
-use io::WriterUtil;
-
-use method::*;
-use status::*;
-use request::*;
-use response::*;
+use std::io::Writer;
+use response::Response;
+use request::Request;
+use method::Method;
 
 struct Context {
     request: Request,
@@ -14,25 +11,25 @@ struct Context {
 struct Handler {
     method: Method,
     pattern: ~str,
-    callback: ~fn(&Context)
+    callback: ~|&Context|
 }
 
 struct Application {
-    mut handlers: ~[Handler]
+    pub handlers: ~[Handler]
 }
 
 impl Application {
-    fn get(patt: &str, cb: ~fn(&Context)) {
+    fn get(patt: &str, cb: ~|&Context|) {
         let h = Handler {
-            method: method::GET,
+            method: Some(Method::GET),
             pattern: str::from_slice(patt),
-            callback: move cb
+            callback: cb
         };
-        self.handlers.push(move h);
+        self.handlers.push(h);
     }
 }
 
-const NO_HANDLER_RESPONSE : &static/str = "
+static NO_HANDLER_RESPONSE : &'static str = "
   <!DOCTYPE html>
   <html>
     <head>
@@ -49,7 +46,7 @@ fn run(f: fn(&Application)) {
     };
     f(&app);
 
-    for fcgi::each_request() |req| {
+    for req in fcgi::each_request() {
         let ctx = Context {
             request: Request {
                 method: from_str::from_str(req.get_param("REQUEST_METHOD")).get(),
@@ -65,7 +62,7 @@ fn run(f: fn(&Application)) {
 
         let mut handled = false;
 
-        for app.handlers.each() |h| {
+        for h in app.handlers.each() {
             if ctx.request.method == h.method && str::starts_with(ctx.request.uri, h.pattern) {
                 h.callback(&ctx);
                 handled = true;
